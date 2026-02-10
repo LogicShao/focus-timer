@@ -2,6 +2,43 @@ import { app, shell, BrowserWindow, ipcMain } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
+import { TimerEngine } from './timerEngine'
+import {
+  TIMER_CHANNELS,
+  isTimerMode,
+  type TimerSettingsPatch,
+  type TimerState
+} from '../shared/timerTypes'
+
+const timerEngine = new TimerEngine()
+
+function broadcastTimerState(state: TimerState): void {
+  BrowserWindow.getAllWindows().forEach((window) => {
+    if (!window.isDestroyed()) {
+      window.webContents.send(TIMER_CHANNELS.state, state)
+    }
+  })
+}
+
+function registerTimerHandlers(): void {
+  ipcMain.handle(TIMER_CHANNELS.getState, () => timerEngine.getState())
+  ipcMain.handle(TIMER_CHANNELS.start, () => timerEngine.start())
+  ipcMain.handle(TIMER_CHANNELS.pause, () => timerEngine.pause())
+  ipcMain.handle(TIMER_CHANNELS.reset, () => timerEngine.reset())
+  ipcMain.handle(TIMER_CHANNELS.skip, () => timerEngine.skip())
+  ipcMain.handle(TIMER_CHANNELS.setMode, (_event, mode: unknown) => {
+    if (!isTimerMode(mode)) {
+      throw new Error(`Invalid timer mode: ${String(mode)}`)
+    }
+    return timerEngine.setMode(mode)
+  })
+  ipcMain.handle(TIMER_CHANNELS.updateSettings, (_event, partial: unknown) => {
+    if (partial === null || typeof partial !== 'object') {
+      throw new Error('Invalid timer settings payload')
+    }
+    return timerEngine.updateSettings(partial as TimerSettingsPatch)
+  })
+}
 
 function createWindow(): void {
   // Create the browser window.
@@ -51,6 +88,10 @@ app.whenReady().then(() => {
 
   // IPC test
   ipcMain.on('ping', () => console.log('pong'))
+  registerTimerHandlers()
+  timerEngine.onStateChanged((state) => {
+    broadcastTimerState(state)
+  })
 
   createWindow()
 
@@ -68,6 +109,10 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit()
   }
+})
+
+app.on('before-quit', () => {
+  timerEngine.dispose()
 })
 
 // In this file you can include the rest of your app's specific main process
