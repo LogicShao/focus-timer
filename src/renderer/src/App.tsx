@@ -49,8 +49,7 @@ function App(): React.JSX.Element {
 
   const runAction = async (action: () => Promise<TimerState>): Promise<void> => {
     try {
-      const nextState = await action()
-      setState(nextState)
+      await action()
       setError('')
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))

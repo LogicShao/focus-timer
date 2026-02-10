@@ -86,8 +86,6 @@ app.whenReady().then(() => {
     optimizer.watchWindowShortcuts(window)
   })
 
-  // IPC test
-  ipcMain.on('ping', () => console.log('pong'))
   registerTimerHandlers()
   timerEngine.onStateChanged((state) => {
     broadcastTimerState(state)
