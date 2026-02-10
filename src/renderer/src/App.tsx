@@ -4,14 +4,10 @@ import {
   TIMER_MODES,
   type TimerMode,
   type TimerSettings,
-  type TimerState
+  type TimerState,
+  type TimerStatus
 } from '../../shared/timerTypes'
-
-const MODE_LABELS: Record<TimerMode, string> = {
-  focus: 'Focus',
-  shortBreak: 'Short Break',
-  longBreak: 'Long Break'
-}
+import { detectLang, t, type Lang } from './i18n'
 
 function formatTime(remainingMs: number): string {
   const safeMs = Math.max(0, remainingMs)
@@ -31,7 +27,28 @@ function didNaturalFocusComplete(prev: TimerState | null, next: TimerState): boo
   return switchedToBreak && completedIncreased
 }
 
+function modeLabel(mode: TimerMode, lang: Lang): string {
+  if (mode === 'focus') {
+    return t('focus', lang)
+  }
+  if (mode === 'shortBreak') {
+    return t('shortBreak', lang)
+  }
+  return t('longBreak', lang)
+}
+
+function statusLabel(status: TimerStatus, lang: Lang): string {
+  if (status === 'running') {
+    return t('statusRunning', lang)
+  }
+  if (status === 'paused') {
+    return t('statusPaused', lang)
+  }
+  return t('statusIdle', lang)
+}
+
 function App(): React.JSX.Element {
+  const [lang, setLang] = useState<Lang>(() => detectLang())
   const [state, setState] = useState<TimerState | null>(null)
   const [todaySummary, setTodaySummary] = useState<TodaySummary | null>(null)
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
@@ -47,6 +64,21 @@ function App(): React.JSX.Element {
       setError(err instanceof Error ? err.message : String(err))
     }
   }
+
+  useEffect(() => {
+    const onLanguageChange = (): void => {
+      setLang(detectLang())
+    }
+
+    window.addEventListener('languagechange', onLanguageChange)
+    return () => {
+      window.removeEventListener('languagechange', onLanguageChange)
+    }
+  }, [])
+
+  useEffect(() => {
+    document.title = t('appTitle', lang)
+  }, [lang])
 
   useEffect(() => {
     let active = true
@@ -146,156 +178,160 @@ function App(): React.JSX.Element {
   const remaining = currentState?.remainingMs ?? 0
 
   return (
-    <div className={`app app--${mode}`}>
-      <header className="top-row">
-        <div className="mode-tabs">
-          {TIMER_MODES.map((modeItem) => (
+    <div className="page-shell">
+      <div className={`app app--${mode}`}>
+        <header className="top-row">
+          <div className="mode-tabs">
+            {TIMER_MODES.map((modeItem) => (
+              <button
+                key={modeItem}
+                className={`mode-tab ${mode === modeItem ? 'is-active' : ''}`}
+                onClick={() => void runAction(() => window.timer.setMode(modeItem))}
+                type="button"
+              >
+                {modeLabel(modeItem, lang)}
+              </button>
+            ))}
+          </div>
+          <button
+            className="settings-trigger"
+            onClick={() => void openSettings()}
+            title={t('settings', lang)}
+            type="button"
+          >
+            ?
+          </button>
+        </header>
+
+        <section className="display">
+          <div className="title">{modeLabel(mode, lang)}</div>
+          <div className="time">{formatTime(remaining)}</div>
+          <div className="meta">
+            {t('status', lang)}: {statusLabel(status, lang)} | {t('completedFocus', lang)}:{' '}
+            {currentState?.completedFocus ?? 0}
+          </div>
+          {error ? <div className="error">{error}</div> : null}
+        </section>
+
+        <footer className="controls">
+          {status === 'running' ? (
             <button
-              key={modeItem}
-              className={`mode-tab ${mode === modeItem ? 'is-active' : ''}`}
-              onClick={() => void runAction(() => window.timer.setMode(modeItem))}
+              onClick={() => void runAction(() => window.timer.pause(), { refreshToday: true })}
               type="button"
             >
-              {MODE_LABELS[modeItem]}
+              {t('pause', lang)}
             </button>
-          ))}
-        </div>
-        <button
-          className="settings-trigger"
-          onClick={() => void openSettings()}
-          title="Settings"
-          type="button"
-        >
-          ⚙
-        </button>
-      </header>
-
-      <section className="display">
-        <div className="title">{MODE_LABELS[mode]}</div>
-        <div className="time">{formatTime(remaining)}</div>
-        <div className="meta">
-          Status: {status} | Completed Focus: {currentState?.completedFocus ?? 0}
-        </div>
-        {error ? <div className="error">{error}</div> : null}
-      </section>
-
-      <footer className="controls">
-        {status === 'running' ? (
+          ) : (
+            <button
+              onClick={() => void runAction(() => window.timer.start(), { refreshToday: true })}
+              type="button"
+            >
+              {t('start', lang)}
+            </button>
+          )}
           <button
-            onClick={() => void runAction(() => window.timer.pause(), { refreshToday: true })}
+            onClick={() => void runAction(() => window.timer.reset(), { refreshToday: true })}
             type="button"
           >
-            Pause
+            {t('reset', lang)}
           </button>
-        ) : (
           <button
-            onClick={() => void runAction(() => window.timer.start(), { refreshToday: true })}
+            onClick={() => void runAction(() => window.timer.skip(), { refreshToday: true })}
             type="button"
           >
-            Start
+            {t('skip', lang)}
           </button>
-        )}
-        <button
-          onClick={() => void runAction(() => window.timer.reset(), { refreshToday: true })}
-          type="button"
-        >
-          Reset
-        </button>
-        <button
-          onClick={() => void runAction(() => window.timer.skip(), { refreshToday: true })}
-          type="button"
-        >
-          Skip
-        </button>
-      </footer>
+        </footer>
 
-      <section className="today-summary">
-        Today: {todaySummary?.pomodoros ?? 0} pomodoros, {todaySummary?.focusMinutes ?? 0} minutes
-      </section>
+        <section className="today-summary">
+          {t('today', lang)}: {todaySummary?.pomodoros ?? 0} {t('pomodoros', lang)},{' '}
+          {todaySummary?.focusMinutes ?? 0} {t('minutes', lang)}
+        </section>
 
-      {isSettingsOpen && settingsDraft ? (
-        <div
-          className="modal-backdrop"
-          onClick={() => setIsSettingsOpen(false)}
-          role="presentation"
-        >
+        {isSettingsOpen && settingsDraft ? (
           <div
-            className="modal"
-            onClick={(event) => event.stopPropagation()}
-            role="dialog"
-            aria-modal="true"
+            className="modal-backdrop"
+            onClick={() => setIsSettingsOpen(false)}
+            role="presentation"
           >
-            <h2>Settings</h2>
-            <label>
-              Focus minutes
-              <input
-                min={0.1}
-                onChange={(event) =>
-                  updateDraftNumber('focusMinutes', event.currentTarget.valueAsNumber)
-                }
-                step={0.1}
-                type="number"
-                value={settingsDraft.focusMinutes}
-              />
-            </label>
-            <label>
-              Short break minutes
-              <input
-                min={0.1}
-                onChange={(event) =>
-                  updateDraftNumber('shortBreakMinutes', event.currentTarget.valueAsNumber)
-                }
-                step={0.1}
-                type="number"
-                value={settingsDraft.shortBreakMinutes}
-              />
-            </label>
-            <label>
-              Long break minutes
-              <input
-                min={0.1}
-                onChange={(event) =>
-                  updateDraftNumber('longBreakMinutes', event.currentTarget.valueAsNumber)
-                }
-                step={0.1}
-                type="number"
-                value={settingsDraft.longBreakMinutes}
-              />
-            </label>
-            <label>
-              Long break every
-              <input
-                min={1}
-                onChange={(event) =>
-                  updateDraftNumber('longBreakEvery', event.currentTarget.valueAsNumber)
-                }
-                step={1}
-                type="number"
-                value={settingsDraft.longBreakEvery}
-              />
-            </label>
-            <label className="checkbox-line">
-              <input
-                checked={settingsDraft.autoStartNext}
-                onChange={(event) => {
-                  const checked = event.currentTarget.checked
-                  setSettingsDraft((prev) => (prev ? { ...prev, autoStartNext: checked } : prev))
-                }}
-                type="checkbox"
-              />
-              Auto start next
-            </label>
-            <div className="modal-actions">
-              <button onClick={() => setIsSettingsOpen(false)} type="button">
-                Cancel
-              </button>
-              <button onClick={() => void saveSettings()} type="button">
-                Save
-              </button>
+            <div
+              className="modal"
+              onClick={(event) => event.stopPropagation()}
+              role="dialog"
+              aria-modal="true"
+            >
+              <h2>{t('settings', lang)}</h2>
+              <label>
+                {t('focusMinutes', lang)}
+                <input
+                  min={0.1}
+                  onChange={(event) =>
+                    updateDraftNumber('focusMinutes', event.currentTarget.valueAsNumber)
+                  }
+                  step={0.1}
+                  type="number"
+                  value={settingsDraft.focusMinutes}
+                />
+              </label>
+              <label>
+                {t('shortBreakMinutes', lang)}
+                <input
+                  min={0.1}
+                  onChange={(event) =>
+                    updateDraftNumber('shortBreakMinutes', event.currentTarget.valueAsNumber)
+                  }
+                  step={0.1}
+                  type="number"
+                  value={settingsDraft.shortBreakMinutes}
+                />
+              </label>
+              <label>
+                {t('longBreakMinutes', lang)}
+                <input
+                  min={0.1}
+                  onChange={(event) =>
+                    updateDraftNumber('longBreakMinutes', event.currentTarget.valueAsNumber)
+                  }
+                  step={0.1}
+                  type="number"
+                  value={settingsDraft.longBreakMinutes}
+                />
+              </label>
+              <label>
+                {t('longBreakEvery', lang)}
+                <input
+                  min={1}
+                  onChange={(event) =>
+                    updateDraftNumber('longBreakEvery', event.currentTarget.valueAsNumber)
+                  }
+                  step={1}
+                  type="number"
+                  value={settingsDraft.longBreakEvery}
+                />
+              </label>
+              <label className="checkbox-line">
+                <input
+                  checked={settingsDraft.autoStartNext}
+                  onChange={(event) => {
+                    const checked = event.currentTarget.checked
+                    setSettingsDraft((prev) => (prev ? { ...prev, autoStartNext: checked } : prev))
+                  }}
+                  type="checkbox"
+                />
+                <span>{t('autoStartNext', lang)}</span>
+              </label>
+              <div className="modal-actions">
+                <button onClick={() => setIsSettingsOpen(false)} type="button">
+                  {t('cancel', lang)}
+                </button>
+                <button onClick={() => void saveSettings()} type="button">
+                  {t('save', lang)}
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      ) : null}
+        ) : null}
+      </div>
     </div>
   )
 }
