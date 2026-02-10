@@ -1,0 +1,57 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+out/
+release/
+*.tsbuildinfo
+
+# Packaged artifacts
+*.dmg
+*.pkg
+*.exe
+*.msi
+*.AppImage
+*.deb
+*.rpm
+*.snap
+*.zip
+*.7z
+*.blockmap
+latest*.yml
+
+# Coverage and caches
+coverage/
+.eslintcache
+.prettiercache
+.cache/
+.vite/
+tmp/
+temp/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# OS files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# IDE files
+.idea/
+*.iml
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+!.vscode/launch.json
