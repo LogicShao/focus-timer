@@ -26,6 +26,13 @@ function assertPositiveInteger(value: unknown, fieldName: string): number {
   return value
 }
 
+function assertPositiveNumber(value: unknown, fieldName: string): number {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
+    throw new Error(`Invalid ${fieldName}: must be a number > 0`)
+  }
+  return value
+}
+
 function assertBoolean(value: unknown, fieldName: string): boolean {
   if (typeof value !== 'boolean') {
     throw new Error(`Invalid ${fieldName}: must be boolean`)
@@ -49,13 +56,13 @@ export function validateSettingsPatch(input: unknown): TimerSettingsPatch {
   const value = input as Record<SettingsKey, unknown>
 
   if ('focusMinutes' in value) {
-    patch.focusMinutes = assertPositiveInteger(value.focusMinutes, 'focusMinutes')
+    patch.focusMinutes = assertPositiveNumber(value.focusMinutes, 'focusMinutes')
   }
   if ('shortBreakMinutes' in value) {
-    patch.shortBreakMinutes = assertPositiveInteger(value.shortBreakMinutes, 'shortBreakMinutes')
+    patch.shortBreakMinutes = assertPositiveNumber(value.shortBreakMinutes, 'shortBreakMinutes')
   }
   if ('longBreakMinutes' in value) {
-    patch.longBreakMinutes = assertPositiveInteger(value.longBreakMinutes, 'longBreakMinutes')
+    patch.longBreakMinutes = assertPositiveNumber(value.longBreakMinutes, 'longBreakMinutes')
   }
   if ('longBreakEvery' in value) {
     patch.longBreakEvery = assertPositiveInteger(value.longBreakEvery, 'longBreakEvery')

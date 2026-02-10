@@ -90,12 +90,12 @@ export class TimerEngine {
 
   updateSettings(partial: TimerSettingsPatch): TimerState {
     this.settings = {
-      focusMinutes: this.normalizePositiveInt(partial.focusMinutes, this.settings.focusMinutes),
-      shortBreakMinutes: this.normalizePositiveInt(
+      focusMinutes: this.normalizePositiveNumber(partial.focusMinutes, this.settings.focusMinutes),
+      shortBreakMinutes: this.normalizePositiveNumber(
         partial.shortBreakMinutes,
         this.settings.shortBreakMinutes
       ),
-      longBreakMinutes: this.normalizePositiveInt(
+      longBreakMinutes: this.normalizePositiveNumber(
         partial.longBreakMinutes,
         this.settings.longBreakMinutes
       ),
@@ -260,5 +260,12 @@ export class TimerEngine {
       return fallback
     }
     return Math.max(1, Math.floor(value))
+  }
+
+  private normalizePositiveNumber(value: number | undefined, fallback: number): number {
+    if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
+      return fallback
+    }
+    return value
   }
 }
