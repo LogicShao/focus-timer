@@ -3,14 +3,34 @@ import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { TimerEngine } from './timerEngine'
+import { HistoryStore } from './storage/historyStore'
+import { ensureStoragePaths } from './storage/paths'
+import { SettingsStore, validateSettingsPatch } from './storage/settingsStore'
 import {
+  SETTINGS_CHANNELS,
+  STATS_CHANNELS,
   TIMER_CHANNELS,
   isTimerMode,
-  type TimerSettingsPatch,
   type TimerState
 } from '../shared/timerTypes'
 
 const timerEngine = new TimerEngine()
+let settingsStore: SettingsStore | null = null
+let historyStore: HistoryStore | null = null
+
+function getSettingsStore(): SettingsStore {
+  if (settingsStore === null) {
+    throw new Error('Settings store is not initialized')
+  }
+  return settingsStore
+}
+
+function getHistoryStore(): HistoryStore {
+  if (historyStore === null) {
+    throw new Error('History store is not initialized')
+  }
+  return historyStore
+}
 
 function broadcastTimerState(state: TimerState): void {
   BrowserWindow.getAllWindows().forEach((window) => {
@@ -20,7 +40,21 @@ function broadcastTimerState(state: TimerState): void {
   })
 }
 
-function registerTimerHandlers(): void {
+async function applySettingsUpdate(partial: unknown): Promise<TimerState> {
+  const patch = validateSettingsPatch(partial)
+  const state = timerEngine.updateSettings(patch)
+  await getSettingsStore().save(state.settings)
+  return state
+}
+
+function normalizeRangeDays(input: unknown): number {
+  if (typeof input !== 'number' || !Number.isInteger(input) || input <= 0) {
+    throw new Error('Invalid days: must be an integer > 0')
+  }
+  return input
+}
+
+function registerIpcHandlers(): void {
   ipcMain.handle(TIMER_CHANNELS.getState, () => timerEngine.getState())
   ipcMain.handle(TIMER_CHANNELS.start, () => timerEngine.start())
   ipcMain.handle(TIMER_CHANNELS.pause, () => timerEngine.pause())
@@ -32,16 +66,24 @@ function registerTimerHandlers(): void {
     }
     return timerEngine.setMode(mode)
   })
-  ipcMain.handle(TIMER_CHANNELS.updateSettings, (_event, partial: unknown) => {
-    if (partial === null || typeof partial !== 'object') {
-      throw new Error('Invalid timer settings payload')
-    }
-    return timerEngine.updateSettings(partial as TimerSettingsPatch)
+  ipcMain.handle(TIMER_CHANNELS.updateSettings, async (_event, partial: unknown) => {
+    return applySettingsUpdate(partial)
+  })
+
+  ipcMain.handle(SETTINGS_CHANNELS.get, () => timerEngine.getSettings())
+  ipcMain.handle(SETTINGS_CHANNELS.update, async (_event, partial: unknown) => {
+    const state = await applySettingsUpdate(partial)
+    return state.settings
+  })
+
+  ipcMain.handle(STATS_CHANNELS.getTodaySummary, () => getHistoryStore().getTodaySummary())
+  ipcMain.handle(STATS_CHANNELS.getRangeSummary, (_event, days: unknown) => {
+    const normalizedDays = normalizeRangeDays(days)
+    return getHistoryStore().getRangeSummary(normalizedDays)
   })
 }
 
 function createWindow(): void {
-  // Create the browser window.
   const mainWindow = new BrowserWindow({
     width: 900,
     height: 670,
@@ -63,8 +105,6 @@ function createWindow(): void {
     return { action: 'deny' }
   })
 
-  // HMR for renderer base on electron-vite cli.
-  // Load the remote URL for development or the local html file for production.
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
     mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
   } else {
@@ -72,37 +112,41 @@ function createWindow(): void {
   }
 }
 
-// This method will be called when Electron has finished
-// initialization and is ready to create browser windows.
-// Some APIs can only be used after this event occurs.
-app.whenReady().then(() => {
-  // Set app user model id for windows
+app.whenReady().then(async () => {
   electronApp.setAppUserModelId('com.electron')
 
-  // Default open or close DevTools by F12 in development
-  // and ignore CommandOrControl + R in production.
-  // see https://github.com/alex8088/electron-toolkit/tree/master/packages/utils
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
   })
 
-  registerTimerHandlers()
+  const storagePaths = await ensureStoragePaths()
+  settingsStore = new SettingsStore(storagePaths.settingsFile)
+  historyStore = new HistoryStore(storagePaths.historyFile)
+
+  const loadedSettings = await settingsStore.load()
+  timerEngine.updateSettings(loadedSettings)
+  await historyStore.load()
+
+  registerIpcHandlers()
+
   timerEngine.onStateChanged((state) => {
     broadcastTimerState(state)
+  })
+  timerEngine.onFocusCompleted((payload) => {
+    void getHistoryStore()
+      .appendFocusSession(payload)
+      .catch((error) => {
+        console.error('Failed to append focus session:', error)
+      })
   })
 
   createWindow()
 
   app.on('activate', function () {
-    // On macOS it's common to re-create a window in the app when the
-    // dock icon is clicked and there are no other windows open.
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
 })
 
-// Quit when all windows are closed, except on macOS. There, it's common
-// for applications and their menu bar to stay active until the user quits
-// explicitly with Cmd + Q.
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit()
@@ -112,6 +156,3 @@ app.on('window-all-closed', () => {
 app.on('before-quit', () => {
   timerEngine.dispose()
 })
-
-// In this file you can include the rest of your app's specific main process
-// code. You can also put them in separate files and require them here.

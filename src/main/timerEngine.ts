@@ -8,6 +8,12 @@ import {
 } from '../shared/timerTypes'
 
 type TimerStateListener = (state: TimerState) => void
+type FocusCompletedListener = (payload: FocusCompletedPayload) => void
+
+export interface FocusCompletedPayload {
+  endedAtMs: number
+  plannedDurationMs: number
+}
 
 const TICK_INTERVAL_MS = 250
 const MS_PER_MINUTE = 60 * 1000
@@ -21,6 +27,7 @@ export class TimerEngine {
   private endAtMs: number | null = null
   private tickTimer: NodeJS.Timeout | null = null
   private readonly listeners = new Set<TimerStateListener>()
+  private readonly focusCompletedListeners = new Set<FocusCompletedListener>()
 
   getState(): TimerState {
     const changed = this.syncRunningState()
@@ -117,6 +124,10 @@ export class TimerEngine {
     return this.snapshot()
   }
 
+  getSettings(): TimerSettings {
+    return { ...this.settings }
+  }
+
   onStateChanged(listener: TimerStateListener): () => void {
     this.listeners.add(listener)
     return () => {
@@ -124,9 +135,17 @@ export class TimerEngine {
     }
   }
 
+  onFocusCompleted(listener: FocusCompletedListener): () => void {
+    this.focusCompletedListeners.add(listener)
+    return () => {
+      this.focusCompletedListeners.delete(listener)
+    }
+  }
+
   dispose(): void {
     this.stopTicker()
     this.listeners.clear()
+    this.focusCompletedListeners.clear()
   }
 
   private syncRunningState(): boolean {
@@ -149,6 +168,10 @@ export class TimerEngine {
 
   private completeCurrentSegment(): void {
     if (this.mode === 'focus') {
+      this.emitFocusCompleted({
+        endedAtMs: Date.now(),
+        plannedDurationMs: this.modeDurationMs('focus')
+      })
       this.completedFocus += 1
       this.switchSegment(this.nextBreakMode(), this.settings.autoStartNext)
       return
@@ -212,6 +235,12 @@ export class TimerEngine {
     const state = this.snapshot()
     this.listeners.forEach((listener) => {
       listener(state)
+    })
+  }
+
+  private emitFocusCompleted(payload: FocusCompletedPayload): void {
+    this.focusCompletedListeners.forEach((listener) => {
+      listener(payload)
     })
   }
 

@@ -42,6 +42,16 @@ export const TIMER_CHANNELS = {
   state: 'timer:state'
 } as const
 
+export const SETTINGS_CHANNELS = {
+  get: 'settings:get',
+  update: 'settings:update'
+} as const
+
+export const STATS_CHANNELS = {
+  getTodaySummary: 'stats:getTodaySummary',
+  getRangeSummary: 'stats:getRangeSummary'
+} as const
+
 export function isTimerMode(value: unknown): value is TimerMode {
   return typeof value === 'string' && TIMER_MODES.includes(value as TimerMode)
 }
